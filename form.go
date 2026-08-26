@@ -242,7 +242,12 @@ func (f *Form) walk(entry reader.Object, from inherited, prefix string, pages ma
 		if name != "" {
 			name += "."
 		}
-		name += string(part)
+		// A field's name is a text string like any other, and the forms that
+		// matter write theirs in UTF-16: every field of an IRS form is called
+		// something like topmostSubform[0].Page1[0].f1_01[0], written two
+		// bytes to the character. Left as bytes it is unreadable and, worse,
+		// unmatchable — nobody could name the field they wanted to fill.
+		name += decodeText(part)
 	}
 
 	kids, hasKids := reader.ToArray(resolve(f.doc, dict.Get("Kids")))
