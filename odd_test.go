@@ -404,3 +404,28 @@ func TestAFieldWrittenInsideAnotherObject(t *testing.T) {
 		t.Error("its widget claims to live somewhere of its own")
 	}
 }
+
+func TestAFieldNamedInUTF16(t *testing.T) {
+	// The forms that matter write their names two bytes to the character.
+	// Left as bytes a name is unreadable and, worse, unmatchable: nobody
+	// could say which field they meant.
+	wide := []byte{0xFE, 0xFF}
+	for _, r := range "nom" {
+		wide = append(wide, 0x00, byte(r))
+	}
+	d := formDoc(t, func(w *reader.Writer, page reader.Ref) (reader.Dict, reader.Array) {
+		ref := w.Add(reader.Dict{"FT": reader.Name("Tx"), "T": reader.String(wide),
+			"Rect": nums(0, 0, 100, 20), "Subtype": reader.Name("Widget"), "P": page})
+		return reader.Dict{"Fields": reader.Array{ref}}, reader.Array{ref}
+	})
+	f, ok := Read(d)
+	if !ok {
+		t.Fatal("no form")
+	}
+	if got := f.Fields()[0].Name; got != "nom" {
+		t.Errorf("the field is called %q", got)
+	}
+	if err := f.Fill("nom", "Mozart"); err != nil {
+		t.Errorf("the field could not be filled by its name: %v", err)
+	}
+}
