@@ -343,3 +343,64 @@ func TestAResourceDictionaryWithNoFontsInIt(t *testing.T) {
 		t.Error("drew nothing")
 	}
 }
+
+func TestWhereEachPieceOfAFormCameFrom(t *testing.T) {
+	// A form is read here and written somewhere else, so it has to be
+	// possible to say where each piece was found.
+	_, f := textFieldDoc(t, reader.Dict{"V": str("x")})
+	if f.Dict() == nil || f.Resources() == nil {
+		t.Error("the form does not say where its own parts are")
+	}
+	if got := f.DefaultAppearance(); got != "/Helv 0 Tf 0 g" {
+		t.Errorf("the form's default appearance is %q", got)
+	}
+	if f.NeedAppearances() {
+		t.Error("a form that did not ask for its appearances to be drawn says it did")
+	}
+	fld := f.Fields()[0]
+	if _, ok := fld.Ref(); !ok {
+		t.Error("the field does not say where it lives")
+	}
+	if fld.Dict() == nil {
+		t.Error("the field does not give its own dictionary")
+	}
+	w := fld.Widgets[0]
+	if _, ok := w.Ref(); !ok {
+		t.Error("the widget does not say where it lives")
+	}
+	if w.Dict() == nil {
+		t.Error("the widget does not give its own dictionary")
+	}
+}
+
+func TestAFormThatAsksForItsAppearancesToBeDrawnAgain(t *testing.T) {
+	d := formDoc(t, func(w *reader.Writer, page reader.Ref) (reader.Dict, reader.Array) {
+		ref := w.Add(reader.Dict{"FT": reader.Name("Tx"), "T": str("a"),
+			"Rect": nums(0, 0, 10, 10)})
+		return reader.Dict{"Fields": reader.Array{ref},
+			"NeedAppearances": reader.Bool(true)}, nil
+	})
+	f, _ := Read(d)
+	if !f.NeedAppearances() {
+		t.Error("a form that asked was not heard")
+	}
+}
+
+func TestAFieldWrittenInsideAnotherObject(t *testing.T) {
+	// A file may write the whole field into the list rather than as an object
+	// of its own, and then there is nowhere to say it lives.
+	d := formDoc(t, func(w *reader.Writer, page reader.Ref) (reader.Dict, reader.Array) {
+		return reader.Dict{"Fields": reader.Array{reader.Dict{
+			"FT": reader.Name("Tx"), "T": str("inline"), "Rect": nums(0, 0, 10, 10)}}}, nil
+	})
+	f, ok := Read(d)
+	if !ok {
+		t.Fatal("no form")
+	}
+	if _, ok := f.Fields()[0].Ref(); ok {
+		t.Error("a field written in place claims to live somewhere of its own")
+	}
+	if _, ok := f.Fields()[0].Widgets[0].Ref(); ok {
+		t.Error("its widget claims to live somewhere of its own")
+	}
+}
