@@ -22,6 +22,10 @@ type Form struct {
 	resources         reader.Dict
 	// quadding is the alignment the whole form asks for, when it asks.
 	quadding int
+	// dynamic says the pages are a placeholder and the form exists only as
+	// XML, and packets are that XML. See xfa.go.
+	dynamic bool
+	packets []Packet
 	// hasXFA says the document carries Adobe's XML form description as well.
 	// Nothing here reads it; it is worth being able to say so.
 	hasXFA bool
@@ -175,16 +179,21 @@ func Read(d *reader.Document) (*Form, bool) {
 	if q, ok := reader.ToInt(resolve(d, dict.Get("Q"))); ok {
 		f.quadding = int(q)
 	}
-	if x := resolve(d, dict.Get("XFA")); x != nil {
-		if _, isArray := reader.ToArray(x); isArray {
-			f.hasXFA = true
-		} else if _, isStream := reader.ToStream(x); isStream {
-			f.hasXFA = true
-		}
-	}
+	f.readXFA(d, dict)
 	roots, ok := reader.ToArray(resolve(d, dict.Get("Fields")))
 	if !ok || len(roots) == 0 {
-		return nil, false
+		// An AcroForm with no fields is usually a leftover: 561 of the 118 833
+		// files in the figure corpus carry an empty one a producer forgot.
+		//
+		// Unless it carries an XFA package, and then it is the opposite — a
+		// form whose fields live in the XML because that is where the whole
+		// form lives. Those are exactly the documents a caller most needs told
+		// about, and refusing them here is what made Dynamic answer for none
+		// of the fourteen dynamic forms in a corpus of 2 240.
+		if !f.hasXFA {
+			return nil, false
+		}
+		return f, true
 	}
 	pages := f.pageNumbers()
 	for _, entry := range roots {
