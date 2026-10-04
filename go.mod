@@ -1,6 +1,6 @@
 module github.com/go-pdfkit/forms
 
-go 1.26.4
+go 1.27.1
 
 require (
 	github.com/go-opentype/fonts v0.10.0
