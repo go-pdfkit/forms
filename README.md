@@ -1,7 +1,7 @@
 # forms
 
-Read, fill and draw a PDF's **AcroForm** — the boxes somebody is meant to type
-into, the squares they tick, the lists they choose from.
+Read, fill, draw and **build** a PDF's **AcroForm** — the boxes somebody is
+meant to type into, the squares they tick, the lists they choose from.
 
 Pure Go, `CGO_ENABLED=0`, standard library plus the rest of
 [go-pdfkit](https://github.com/go-pdfkit). Builds for `js/wasm` and for every
@@ -21,6 +21,47 @@ for _, field := range f.Fields() {
 f.Fill("f1_02", "Wolfgang Amadeus Mozart")
 f.Fill("c1_1", "yes")
 ```
+
+## Writing a form
+
+The other direction: `FieldType`, `Flags`, `Dict`, `Check` and `CheckAll` say
+what a field has to be in the file for the reader above to read back the field
+you asked for. Whoever is writing the document adds the two things only a
+writer can know — the widget references under `Kids`, and the page each widget
+sits on.
+
+```go
+field := forms.Field{
+    Name: "size", Kind: forms.ComboBox,
+    Options: []forms.Option{{Value: "s", Label: "Small"}, {Value: "l", Label: "Large"}},
+    Widgets: []forms.Widget{{Page: 1, Rect: [4]float64{72, 700, 300, 720}}},
+}
+if err := forms.CheckAll([]forms.Field{field}); err != nil {
+    // A field with no name, a choice with no rows, a comb with no MaxLen, an
+    // empty rectangle: each one makes a file that OPENS and is broken.
+}
+dict := forms.Dict(field) // FT, T, Ff, Q, MaxLen, Opt, V
+```
+
+It shares the reader's flag constants rather than restating them. The bits are
+the one thing a second copy gets subtly wrong — bit 22 and bit 25 are the two
+the tables make easy to miscount — and a writer that disagreed with the reader
+would produce a form this package itself reads as something else, which no test
+of either half alone could see. The round-trip tests write every kind and read
+it back through `Read`.
+
+A flag that does not belong to the kind is **dropped, not written**: `Multiline`
+is bit 13 of a text field and `NoToggleToOff` is bit 15 of a button, so passing
+one struct around with `Multiline` left set would otherwise make a checkbox that
+cannot be unticked.
+
+**Text is encoded as the reader decodes it.** `decodeText` reads a string with
+no mark at the front as PDFDocEncoding — one rune per *byte* — so writing Go's
+UTF-8 bytes turns `café` into `cafÃ©` in a file that opens and looks perfectly
+well formed. Non-ASCII text is written as UTF-16 behind the byte-order mark;
+text that is not valid UTF-8 is refused, because it cannot be stored and read
+back under the name it was given. Found by fuzzing the round trip, not by
+reading the code.
 
 ## What is awkward about forms
 
